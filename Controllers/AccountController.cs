@@ -14,13 +14,6 @@ namespace Blog.Controllers;
 [ApiController]
 public class AccountController : ControllerBase
 {
-    private readonly TokenService _tokenService;
-    
-    public AccountController(TokenService tokenService)
-    {
-        _tokenService = tokenService;
-    }
-
     [AllowAnonymous]
     [HttpPost("v1/accounts/register")]
     public async Task<IActionResult> Post([FromBody] RegisterViewModel model, [FromServices] BlogDataContext context)
@@ -63,11 +56,34 @@ public class AccountController : ControllerBase
     
     [AllowAnonymous]
     [HttpPost("v1/accounts/login")]
-    public IActionResult Login()
+    public async Task<IActionResult> Login(
+        [FromBody] LoginViewModel model,
+        [FromServices] BlogDataContext context,
+        [FromServices] TokenService tokenService)
     {
-        var token = _tokenService.GenerateToken(null);
+        if (!ModelState.IsValid) return BadRequest(new ResultViewModel<User>(ModelState.GetErrors()));
 
-        return Ok(token);
+        var user = await context.Users
+            .AsNoTracking()
+            .Include(x => x.Roles)
+            .FirstOrDefaultAsync(x => x.Email == model.Email);
+
+        if (user is null) 
+            return StatusCode(401,new ResultViewModel<User>("Usuário ou senha inválido"));
+
+        if (!PasswordHasher.Verify(user.PasswordHash, model.Password))
+            return StatusCode(401, new ResultViewModel<User>("Usuário ou senha inválido"));
+
+        try
+        {
+            var token = tokenService.GenerateToken(user);
+            
+            return Ok(new ResultViewModel<string>(token));
+        }
+        catch
+        {
+            return StatusCode(500, new ResultViewModel<string>("05X04 - Internal server error"));
+        }
     }
 
     #region AuthTest
