@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Blog.Data;
 using Blog.Extensions;
 using Blog.Models;
@@ -98,6 +99,37 @@ public class AccountController : ControllerBase
         }
     }
 
+    [HttpPost("v1/accounts/upload-image")]
+    public async Task<IActionResult> UploadImage(
+        [FromBody] UploadImageViewModel model,
+        [FromServices] BlogDataContext context)
+    {
+        var fileName = $"{Guid.NewGuid().ToString()}.jpg";
+        var data = new Regex(@"^data:image\/[a-z]+;base64,")
+            .Replace(model.Base64Image, "");
+
+        var bytes = Convert.FromBase64String(data);
+
+        try
+        {
+            await System.IO.File.WriteAllBytesAsync($"wwwroot/images/{fileName}", bytes);
+            
+            var user = await context.Users.FirstOrDefaultAsync(x => x.Email == User.Identity.Name);
+
+            if (user == null) return NotFound(new ResultViewModel<User>("Usuário não encontrado"));
+
+            user.Image = $"https://localhost:7075/images/{fileName}";
+            context.Users.Update(user);
+            await context.SaveChangesAsync();
+            
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ResultViewModel<string>("05X04 - Falha interna do servidor"));
+        }
+    }
+    
     #region AuthTest
     
     [HttpGet("v1/user")]
